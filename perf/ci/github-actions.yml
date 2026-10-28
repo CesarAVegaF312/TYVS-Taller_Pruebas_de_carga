@@ -95,3 +95,78 @@ jobs:
           # una corrida de segundos puede pesar cientos de megabytes.
           path: perf/results/summary-*.json
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Pista JMeter. Mismo servicio, mismo oráculo (voters.csv), misma puerta de
+  # calidad, con la otra herramienta. Corre bajo demanda para no duplicar el
+  # tiempo de cada pull request; si su equipo eligió JMeter, cámbiele el
+  # disparador y borre el job de k6.
+  # ---------------------------------------------------------------------------
+  jmeter-perf:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Empaquetar el servicio
+        run: mvn -B -DskipTests clean package
+        working-directory: registraduria
+
+      - name: Levantar el servicio en segundo plano
+        run: |
+          nohup java -jar target/registraduria-1.0-SNAPSHOT.jar > /tmp/app.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/actuator/health > /dev/null; then
+              echo "Servicio arriba"; exit 0
+            fi
+            sleep 2
+          done
+          echo "El servicio no arrancó a tiempo"; cat /tmp/app.log; exit 1
+        working-directory: registraduria
+
+      # Se descarga el binario oficial: el paquete 'jmeter' de apt es muy viejo.
+      - name: Instalar JMeter
+        run: |
+          JMETER_VERSION=5.6.3
+          curl -sSL -o /tmp/jmeter.tgz \
+            "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
+          tar -xzf /tmp/jmeter.tgz -C /opt
+          echo "/opt/apache-jmeter-${JMETER_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Preparar carpeta de resultados
+        run: mkdir -p perf/results
+
+      # Escenario corto, igual que en el job de k6. -n = sin GUI, siempre.
+      - name: Smoke con JMeter
+        run: |
+          jmeter -n -t perf/jmeter/registraduria.jmx \
+            -q perf/jmeter/escenarios/smoke.properties \
+            -l perf/results/jmeter-smoke.jtl \
+            -e -o perf/results/jmeter-smoke-report
+
+      # JMeter no tiene thresholds incorporados: este paso es el gate.
+      # Termina con código distinto de 0 si p95, p99 o la tasa de error
+      # superan el SLO, y separa "no respondió 200" de "respondió 200 con
+      # el resultado de negocio equivocado".
+      - name: Verificar SLO
+        run: python3 perf/jmeter/verificar_slo.py perf/results/jmeter-smoke.jtl --p95 300 --p99 800 --error-rate 0.01
+
+      - name: Publicar artefactos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-results
+          # El .jtl y el resumen. El dashboard HTML se regenera desde el .jtl
+          # con `jmeter -g archivo.jtl -o carpeta`, no hace falta subirlo.
+          path: |
+            perf/results/jmeter-*.jtl
+            perf/results/summary-jmeter-*.json
+          if-no-files-found: warn

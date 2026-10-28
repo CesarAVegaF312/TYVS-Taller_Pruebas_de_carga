@@ -27,6 +27,7 @@ Comprender, diseñar e implementar **pruebas de rendimiento** (baseline, carga, 
 - [Script de prueba (k6)](#script-de-prueba-perfscriptsregister_person_k6js)
 - [Dataset mínimo](#dataset-mínimo-perfdatapersonscsv)
 - [Paso a paso: Ejecución básica](#paso-a-paso-ejecución-básica)
+- [Pista JMeter: plan `.jmx` equivalente](#pista-jmeter-plan-jmx-equivalente)
 - [SLO / SLA sugeridos](#slo--sla-sugeridos)
 - [Observabilidad](#observabilidad-de-la-medición-al-diagnóstico)
 - [Ejecución local y en CI](#ejecución-local-y-en-ci)
@@ -66,14 +67,15 @@ Comprender, diseñar e implementar **pruebas de rendimiento** (baseline, carga, 
 │   ├─ pom.xml
 │   └─ src/main/...              # el servicio con POST /register
 └─ perf/
-    ├─ scripts/                  # register_person_k6.js, register_voter_k6.js
+    ├─ scripts/                  # pista k6: register_person_k6.js, register_voter_k6.js
+    ├─ jmeter/                   # pista JMeter: registraduria.jmx, escenarios/*.properties, verificar_slo.py
     ├─ data/                     # persons.csv, voters.csv
     ├─ results/                  # resúmenes de cada corrida (no se versionan)
     ├─ ci/                       # plantilla de GitHub Actions
     └─ lab/                      # mediciones de la presentación (material del profesor)
 ```
 
-> Note que el sistema bajo prueba (`registraduria/`) y las pruebas (`perf/`) son hermanos. Los comandos de Maven se ejecutan **dentro de `registraduria/`**; los de k6, **desde la raíz**.
+> Note que el sistema bajo prueba (`registraduria/`) y las pruebas (`perf/`) son hermanos. Los comandos de Maven se ejecutan **dentro de `registraduria/`**; los de k6 y de JMeter, **desde la raíz**.
 
 ### Herramientas y dependencias
 
@@ -83,7 +85,7 @@ Comprender, diseñar e implementar **pruebas de rendimiento** (baseline, carga, 
 - **Soporte de monitoreo**: Prometheus/Grafana, APM (New Relic, Datadog, Elastic APM).
 - **Utilitarios**: `jq`, `csvkit`, `python` para post-procesamiento de resultados.
 
-> Puedes usar **JMeter** como herramienta principal y complementar con k6 o Gatling según preferencias del equipo.
+> El taller trae **dos pistas sobre los mismos escenarios y el mismo oráculo** (`voters.csv`): los scripts **k6** en `perf/scripts/` y el plan **JMeter** en `perf/jmeter/registraduria.jmx`. Elija una; la entrega acepta cualquiera de las dos. Gatling queda como alternativa libre. La sección [Pista JMeter](#pista-jmeter-plan-jmx-equivalente) explica cómo se corresponden.
 
 ---
 
@@ -188,7 +190,7 @@ sudo apt install k6
 
 ## Escenarios de prueba
 
-Estos son los escenarios que **implementan los scripts**. Se activan con `--env SCENARIO=<nombre>`:
+Estos son los escenarios que **implementan los scripts**. Se activan con `--env SCENARIO=<nombre>` en k6, o con `-q perf/jmeter/escenarios/<nombre>.properties` en JMeter:
 
 | `SCENARIO` | Modelo de carga | Forma | Duración | Para qué |
 |---|---|---|---|---|
@@ -357,6 +359,84 @@ Y el resumen completo queda en `perf/results/summary-<escenario>.json`.
 
 Documente un breve análisis con los números obtenidos.
 
+---
+
+## Pista JMeter: plan `.jmx` equivalente
+
+El syllabus del curso nombra **JMeter**, y es la herramienta que más va a encontrar en equipos de QA establecidos. k6 es la pista principal de este taller porque es *CLI-first* y se versiona como código; pero los conceptos son los mismos, y por eso el repositorio trae **el mismo experimento en las dos herramientas**: [`perf/jmeter/registraduria.jmx`](perf/jmeter/registraduria.jmx) es el equivalente de `register_voter_k6.js`.
+
+**Haga una de las dos pistas, no las dos.** Lo que se evalúa es el diseño de los escenarios, el oráculo de negocio y el análisis, no la herramienta.
+
+### Instalación
+
+JMeter necesita **Java 8 o superior** (ya lo tiene para la registraduría).
+
+```bash
+choco install jmeter        # Windows (Chocolatey)
+brew install jmeter         # macOS (Homebrew)
+```
+
+O descargue el `.zip` de <https://jmeter.apache.org/download_jmeter.cgi>, descomprímalo y agregue su carpeta `bin/` al `PATH`. Verifique con:
+
+```bash
+jmeter -v
+```
+
+### Qué hay en el plan
+
+Ábralo en la GUI para leerlo (**la GUI es para diseñar y depurar, nunca para medir**):
+
+```bash
+jmeter -t perf/jmeter/registraduria.jmx
+```
+
+| Elemento | Equivalente en k6 | Qué hace |
+|---|---|---|
+| Variables definidas por el usuario | `__ENV.*` | Todo se lee de propiedades `-J`: `host`, `port`, `threads`, `rampup`, `duration`, `sleep_ms`, `timeout_ms`, `id_base`, `data_file` |
+| CSV Data Set Config | `SharedArray` sobre `voters.csv` | Reparte las 512 filas entre los hilos; la columna `expected` es el oráculo |
+| Thread Group | `scenarios` | Usuarios concurrentes, rampa y duración. Modelo **cerrado** |
+| HTTP Request `POST /register` | `http.post(...)` | Cuerpo JSON con un **id único por petición**: `ID_BASE + __counter(FALSE)` |
+| Response Assertion "Código HTTP 200" | `check: status 200` | — |
+| Response Assertion "Resultado de negocio == expected" | `check: resultado de negocio esperado` | Igualdad exacta con `${expected}`, no *contiene* |
+| Constant Timer | `sleep(SLEEP_MS)` | Pausa entre iteraciones |
+| Summary / Aggregate Report | resumen de consola | Solo para la GUI; en CLI el dato va al `.jtl` |
+| `perf/jmeter/escenarios/*.properties` | `ALL_SCENARIOS` | Un archivo por escenario con `threads`, `rampup`, `duration` |
+| `perf/jmeter/verificar_slo.py` | `thresholds` | Lee el `.jtl`, calcula p95/p99/tasa de error y **falla** si no se cumple el SLO |
+
+> **Lo que JMeter no modela igual.** El Thread Group estándar solo tiene *rampa de subida* y *duración total*: no baja usuarios ni hace escalones. Por eso `load`, `stress` y `spike` son **aproximaciones** (están explicadas en cada `.properties`). Tampoco trae un modelo *abierto* por tasa de llegada sin plugins, así que el escenario `arrival` de k6 no tiene equivalente aquí. Si quiere formas exactas, el plugin *Ultimate Thread Group* lo permite; no es obligatorio.
+
+### Ejecución
+
+Siempre en modo no-GUI (`-n`), **desde la raíz del repositorio**, con el servicio ya arriba:
+
+```bash
+jmeter -n -t perf/jmeter/registraduria.jmx \
+       -q perf/jmeter/escenarios/baseline.properties \
+       -l perf/results/jmeter-baseline.jtl \
+       -e -o perf/results/jmeter-baseline-report
+```
+
+- `-q` carga el escenario (`smoke`, `baseline`, `load`, `stress`, `spike`, `soak`, `regression`).
+- `-l` escribe el `.jtl`: **una fila por petición**, en CSV. Es el artefacto que se analiza.
+- `-e -o` genera el **dashboard HTML** (percentiles, throughput en el tiempo, errores). No lo versione: pesa y se regenera desde el `.jtl` con `jmeter -g archivo.jtl -o carpeta`.
+- Cualquier valor se puede sobrescribir en línea: `-Jthreads=50 -Jduration=120 -Jhost=10.0.0.5`.
+
+Después, la puerta de calidad:
+
+```bash
+python perf/jmeter/verificar_slo.py perf/results/jmeter-baseline.jtl --p95 300 --p99 800 --error-rate 0.01
+```
+
+Imprime el resumen, escribe `perf/results/summary-jmeter-baseline.json` (el equivalente del `summary-*.json` de k6) y termina con código distinto de cero si algún SLO no se cumple. En CI ese código es lo que hace fallar el paso; el job `jmeter-perf` de [`perf/ci/github-actions.yml`](perf/ci/github-actions.yml) lo muestra completo.
+
+> **El mismo cuidado con los ids que en k6.** El plan genera ids únicos *dentro* de la corrida, no *entre* corridas. Si repite la prueba sin reiniciar el servicio, todo lo que esperaba `VALID` devolverá `DUPLICATED` y el verificador lo reportará como "resultado de negocio incorrecto". Reinicie el servicio o desplace el rango con `-Jid_base=700000000`.
+
+### Qué mirar en el `.jtl` que k6 no le muestra
+
+El `.jtl` guarda **cada muestra** con su marca de tiempo, latencia, código y el mensaje de la aserción que falló. Eso permite dos análisis que en k6 requieren `-o json=`:
+
+1. Abrir el CSV y ver **en qué segundo** empezaron los errores (correlacionarlo con la rampa).
+2. Filtrar por `failureMessage` y distinguir *no respondió 200* de *respondió 200 con el resultado equivocado*. `verificar_slo.py` ya separa los dos conteos.
 
 ---
 
@@ -382,7 +462,7 @@ Documente un breve análisis con los números obtenidos.
   - **Gates** de calidad: fallar el *pipeline* si p95 > SLO o la tasa de error > 1%.
   - Separar los escenarios cortos (en cada PR) de los largos (nocturnos).
 
-El repositorio trae el flujo listo en [`perf/ci/github-actions.yml`](perf/ci/github-actions.yml).
+El repositorio trae el flujo listo en [`perf/ci/github-actions.yml`](perf/ci/github-actions.yml), con un job para cada pista: `k6-perf` (corre en cada *pull request*) y `jmeter-perf` (bajo demanda, con `workflow_dispatch`). Use el de la pista que eligió y borre el otro.
 
 > **GitHub Actions solo lee los workflows de `.github/workflows/`.** El archivo está en `perf/ci/` para que quede versionado junto al resto del material de rendimiento, pero **no se ejecuta desde ahí**. Cópielo:
 >
@@ -513,7 +593,7 @@ Con 200 VUs eso significa cientos de conexiones creadas y destruidas por segundo
 
 ### 1) Repositorio
 
-- **Repositorio Git** con carpeta `perf/` y scripts (JMeter/k6/Gatling).
+- **Repositorio Git** con carpeta `perf/` y **una** de las dos pistas: scripts k6 (`perf/scripts/`) o plan JMeter (`perf/jmeter/*.jmx` + `escenarios/`).
 - `README.md` con **SLA/SLO**, escenarios, cómo ejecutar y interpretar resultados.
 - **Datos de prueba** en `perf/data/` (sin información sensible).
 - **Resultados** (`perf/results/`) con los `summary-*.json` de cada corrida.
@@ -531,23 +611,21 @@ Estructura mínima sugerida:
 - **Conclusiones técnicas**: hallazgos y *trade-offs*.
 - **Mejoras propuestas**: acciones de performance tuning.
 
-### 3) Escenarios y scripts
+### 3) Escenarios: scripts k6 o plan JMeter
 
-- ≥ **3 escenarios** (baseline, carga, estrés) implementados y versionados.
-
-- `perf/scripts/register_voter_k6.js`
-- `perf/data/voters.csv` (512 filas, con la columna `expected`, cubriendo las seis clases de equivalencia)
-- `perf/results/*` (`baseline.json`, `load.json`)
+- ≥ **3 escenarios** (baseline, carga, estrés) implementados y versionados, en **una** de las dos pistas:
+  - **k6**: `perf/scripts/register_voter_k6.js` y los `perf/results/summary-*.json` de cada corrida.
+  - **JMeter**: `perf/jmeter/registraduria.jmx`, sus `escenarios/*.properties`, el `.jtl` de cada corrida y el `summary-jmeter-*.json` que produce `verificar_slo.py`.
+- `perf/data/voters.csv` (512 filas, con la columna `expected`, cubriendo las seis clases de equivalencia).
 - Breve análisis: p95/p99, error rate, hallazgos y próximas acciones.
-
-- **Parametrización** y **correlación** en el script (tokens/IDs dinámicos).
-- **Asserts** de tiempo de respuesta y código HTTP.
+- **Parametrización** y **correlación** (ids únicos por petición, datos desde CSV) en el script o en el plan.
+- **Asserts** de código HTTP **y de resultado de negocio** (no basta el 200).
 
 ### 4) Reportes y cobertura de escenarios
 
-- Un `summary-<escenario>.json` por cada escenario ejecutado (los genera `handleSummary`).
+- Un resumen por escenario ejecutado: `summary-<escenario>.json` (k6, lo genera `handleSummary`) o `summary-jmeter-<escenario>.json` (JMeter, lo genera `verificar_slo.py` a partir del `.jtl`).
 
-> k6 **no genera reportes HTML** de forma nativa, y `.jtl` es un formato de JMeter. Si quiere un HTML, use `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=perf/results/reporte.html k6 run ...`, pero para la entrega basta con el JSON del resumen.
+> k6 **no genera reportes HTML** de forma nativa. Si quiere uno, use `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=perf/results/reporte.html k6 run ...`, pero para la entrega basta con el JSON del resumen. JMeter sí lo genera con `-e -o`: adjunte capturas del dashboard en el Wiki, pero versione el `.jtl` y el resumen, no la carpeta del reporte.
 - Tabla de **comparación** vs baseline con % de mejora/degradación.
 
 ### 5) Matriz de pruebas de rendimiento
@@ -579,7 +657,7 @@ Estructura mínima sugerida:
 |---|---|---|---|---|---|---|
 | **Estructura del repositorio** | `perf/` con scripts, datos, resultados y README claro. | Estructura impecable y reproducible. | Clara, pocos ajustes. | Parcialmente ordenada. | Desorden o ejecuciones fallan. | No entrega. |
 | **Plan de pruebas (SLA/SLO, modelos, escenarios)** | Definición y justificación. | Completo y alineado al negocio. | Completo con leves omisiones. | Parcial e impreciso. | Incompleto y confuso. | Ausente. |
-| **Scripts (parametrización, correlación, asserts)** | Calidad técnica. | Correctos, robustos y comentados. | Correctos con detalles menores. | Limitados o frágiles. | Errores o sin correlación. | No existen. |
+| **Scripts k6 o plan JMeter (parametrización, correlación, asserts)** | Calidad técnica, en cualquiera de las dos pistas. | Correctos, robustos y comentados; verifican código HTTP y resultado de negocio. | Correctos con detalles menores. | Limitados o frágiles, o solo verifican el 200. | Errores o sin correlación. | No existen. |
 | **Ejecución y artefactos** | Resúmenes JSON por escenario y evidencias. | Artefactos limpios y comparables. | Artefactos adecuados. | Evidencia parcial. | Artefactos incompletos. | Sin evidencia. |
 | **Análisis de resultados** | Diagnóstico y recomendaciones. | Análisis profundo y accionable. | Análisis correcto. | Superficial o sin datos. | Conclusiones erróneas. | No analiza. |
 | **CI/CD y gates** | Automatización y umbrales. | Pipeline con gates efectivos. | Pipeline básico. | Pipeline parcial. | Pipeline defectuoso. | Sin CI. |
