@@ -1,0 +1,10 @@
+# Prometheus lee las metricas del servidor cada 5 s desde Actuator.
+# Las de k6 no se leen: k6 las envia (remote write), ver docker-compose.yml.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: registraduria
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:8080"]
