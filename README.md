@@ -31,6 +31,7 @@ Comprender, diseñar e implementar **pruebas de rendimiento** (baseline, carga, 
 - [SLO / SLA sugeridos](#slo--sla-sugeridos)
 - [Observabilidad](#observabilidad-de-la-medición-al-diagnóstico)
 - [Ejecución local y en CI](#ejecución-local-y-en-ci)
+- [Ambiente con Docker: servicio, Prometheus, Grafana y k6](#ambiente-con-docker-servicio-prometheus-grafana-y-k6)
 - [Análisis de resultados](#análisis-de-resultados)
 - [Buenas prácticas](#buenas-prácticas)
 - [Para entregar](#para-entregar-con-este-taller)
@@ -560,6 +561,38 @@ Con 200 VUs eso significa cientos de conexiones creadas y destruidas por segundo
 4. Explique por qué este defecto no aparece en ninguno de los otros tres talleres.
 
 > **La conclusión que buscamos**: una prueba de carga sin observabilidad le dice que algo va mal; con observabilidad le dice **qué** arreglar. La primera genera reuniones; la segunda, cambios de código.
+
+---
+
+## Ambiente con Docker: servicio, Prometheus, Grafana y k6
+
+El ejercicio "cliente contra servidor" pide comparar dos números que se consultan por separado: el p95 de k6 y el de Actuator. [`docker-compose.yml`](docker-compose.yml) los pone **en la misma gráfica**:
+
+| Servicio | Puerto | Qué hace |
+|---|---|---|
+| `app` | 8080 | La Registraduría, compilada dentro de la imagen ([`registraduria/Dockerfile`](registraduria/Dockerfile)) |
+| `prometheus` | 9090 | Lee `/actuator/prometheus` cada 5 s y **recibe** las métricas que le envía k6 |
+| `grafana` | 3000 | Tablero *Registraduria: cliente vs servidor*, ya cargado y sin usuario ni clave |
+| `k6` | | Solo bajo demanda, con `docker compose run` |
+
+```bash
+docker compose up -d --wait
+docker compose run --rm k6 run -o experimental-prometheus-rw \
+  --env BASE_URL=http://app:8080 --env SCENARIO=load \
+  perf/scripts/register_person_k6.js
+# abra http://localhost:3000 mientras corre
+docker compose down
+```
+
+Fíjese en `BASE_URL=http://app:8080`: k6 corre en la misma red que el servicio y lo encuentra por su nombre, no por `localhost`. El resumen `perf/results/summary-<escenario>.json` se escribe igual que al correr k6 instalado.
+
+El tablero tiene cinco paneles: p95 de cliente contra servidor, throughput enviado contra atendido, respuestas que no son 2xx, hilos de la JVM, y heap con pausas de GC. Es el ejercicio "cliente contra servidor" convertido en algo que se ve mientras ocurre. Lo que el tablero muestra está en [`perf/observabilidad/`](perf/observabilidad/), que es configuración versionada como cualquier otro archivo.
+
+> **Ojo con lo que se mide.** Aquí k6, el servicio, Prometheus y Grafana comparten la misma máquina y compiten por la CPU. El ambiente sirve para aprender a leer las métricas y a diagnosticar; no sirve para fijar un SLO. Un número de capacidad se mide con el generador de carga en otra máquina.
+
+### Devcontainer
+
+El repositorio también trae [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) (Java 17, Maven y Docker), que se abre en **GitHub Codespaces** (*Code → Codespaces → Create codespace*) o con VS Code y la extensión *Dev Containers*. Los comandos de arriba funcionan igual dentro de él, y los puertos 8080, 3000 y 9090 se reenvían solos. El workflow [`ambiente.yml`](.github/workflows/ambiente.yml) levanta todo esto en cada cambio, hace una corrida corta de k6 y comprueba que cada panel del tablero tenga datos.
 
 ---
 
