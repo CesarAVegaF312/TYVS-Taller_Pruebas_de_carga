@@ -624,6 +624,8 @@ El repositorio también trae [`.devcontainer/devcontainer.json`](.devcontainer/d
 
 ## PARA ENTREGAR CON ESTE TALLER
 
+> **Ejercicio y proyecto.** Lo que pide esta sección es el **ejercicio** de la unidad 5 y se entrega sobre la Registraduría. Los mismos escenarios, SLO y análisis se aplican después al servicio del **caso de su equipo** en el [Proyecto de Pruebas de Carga y Rendimiento](https://github.com/CesarAVegaF312/TYVS-Proyecto_Pruebas_carga_y_rendimiento). Cada ficha del [catálogo de casos](https://github.com/CesarAVegaF312/TYVS-Proyecto_Pruebas_Unitarias/blob/master/casos/README.md) trae su SLO de partida y su patrón de carga de negocio.
+
 ### 1) Repositorio
 
 - **Repositorio Git** con carpeta `perf/` y **una** de las dos pistas: scripts k6 (`perf/scripts/`) o plan JMeter (`perf/jmeter/*.jmx` + `escenarios/`).
