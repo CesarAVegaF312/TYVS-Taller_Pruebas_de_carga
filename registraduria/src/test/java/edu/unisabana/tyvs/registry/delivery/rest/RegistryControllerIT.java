@@ -94,4 +94,23 @@ class RegistryControllerIT {
         assertEquals(HttpStatus.OK, repetida.getStatusCode());
         assertEquals("DUPLICATED", repetida.getBody());
     }
+
+    @Test
+    void shouldReturn400ForUnknownGender() {
+        // Un dato malo del cliente es un 4xx, no un 5xx: k6 cuenta los 5xx en
+        // http_req_failed como fallos del servidor (ver RegistryExceptionHandler).
+        ResponseEntity<String> resp = registrar(
+                "{\"name\":\"Eva\",\"id\":104,\"age\":30,\"gender\":\"X\",\"alive\":true}");
+
+        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
+        assertEquals("INVALID_INPUT", resp.getBody());
+    }
+
+    @Test
+    void shouldReturn400ForMalformedJson() {
+        ResponseEntity<String> resp = registrar("{\"name\":");
+
+        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
+        assertEquals("MALFORMED_JSON", resp.getBody());
+    }
 }
