@@ -6,10 +6,10 @@ import edu.unisabana.tyvs.registry.domain.model.Person;
 import edu.unisabana.tyvs.registry.domain.model.RegisterResult;
 import edu.unisabana.tyvs.registry.infrastructure.persistence.RegistryRepository;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Pruebas de integración para el caso de uso {@link Registry}, aplicando el formato AAA:
@@ -19,7 +19,7 @@ import static org.junit.Assert.*;
  *   <li><b>Assert</b>: verificación de los resultados esperados.</li>
  * </ul>
  */
-public class RegistryTest {
+class RegistryTest {
 
     private RegistryRepositoryPort repo;
     private Registry registry;
@@ -32,8 +32,8 @@ public class RegistryTest {
      *   <li>Construye el caso de uso inyectando el repositorio.</li>
      * </ul>
      */
-    @Before
-    public void setup() throws Exception {
+    @BeforeEach
+    void setup() throws Exception {
         String jdbc = "jdbc:h2:mem:regdb;DB_CLOSE_DELAY=-1";
         repo = new RegistryRepository(jdbc);
 
@@ -48,7 +48,7 @@ public class RegistryTest {
      * <p>Una persona válida debe ser registrada exitosamente.</p>
      */
     @Test
-    public void shouldRegisterValidPerson() throws Exception {
+    void shouldRegisterValidPerson() throws Exception {
         // Arrange
         Person p1 = new Person("Ana", 100, 30, Gender.FEMALE, true);
 
@@ -69,7 +69,7 @@ public class RegistryTest {
      * </ul>
      */
     @Test
-    public void shouldPersistValidVoterAndRejectDuplicates() throws Exception {
+    void shouldPersistValidVoterAndRejectDuplicates() throws Exception {
         // Arrange
         Person p1 = new Person("Ana", 100, 30, Gender.FEMALE, true);
         Person p2 = new Person("AnaDos", 100, 40, Gender.FEMALE, true);

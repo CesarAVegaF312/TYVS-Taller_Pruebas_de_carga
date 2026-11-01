@@ -4,10 +4,10 @@ import edu.unisabana.tyvs.registry.application.port.out.RegistryRepositoryPort;
 import edu.unisabana.tyvs.registry.domain.model.Gender;
 import edu.unisabana.tyvs.registry.domain.model.Person;
 import edu.unisabana.tyvs.registry.domain.model.RegisterResult;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
  * <p><b>Beneficio:</b> este tipo de prueba es una <i>unitaria pura</i>,
  * sin necesidad de levantar bases de datos ni infraestructura adicional.</p>
  */
-public class RegistryWithMockTest {
+class RegistryWithMockTest {
 
     /** Mock del puerto de persistencia. */
     private RegistryRepositoryPort repo;
@@ -40,8 +40,8 @@ public class RegistryWithMockTest {
      * <p>Se crea un mock de {@link RegistryRepositoryPort} usando Mockito
      * y se inyecta en la instancia de {@link Registry}.</p>
      */
-    @Before
-    public void setUp() {
+    @BeforeEach
+    void setUp() {
         repo = mock(RegistryRepositoryPort.class);
         registry = new Registry(repo);
     }
@@ -60,7 +60,7 @@ public class RegistryWithMockTest {
      * @throws Exception propagada en caso de error durante la ejecución.
      */
     @Test
-    public void shouldReturnDuplicatedWhenRepoSaysExists() throws Exception {
+    void shouldReturnDuplicatedWhenRepoSaysExists() throws Exception {
         // Arrange: configurar mock y datos
         when(repo.existsById(7)).thenReturn(true);
         Person p = new Person("Ana", 7, 25, Gender.FEMALE, true);
