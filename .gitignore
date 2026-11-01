@@ -13,7 +13,10 @@ hs_err_pid*
 
 registraduria/target/
 
-*.ini.idea/
+*.ini
+
+# IDE
+.idea/
 .vscode/
 *.iml
 
