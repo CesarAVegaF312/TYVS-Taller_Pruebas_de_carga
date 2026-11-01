@@ -1,19 +1,18 @@
 package edu.unisabana.tyvs.registry.delivery.rest;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit4.SpringRunner;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Prueba de integracion del endpoint que despues se somete a carga con k6.
@@ -36,10 +35,10 @@ import static org.junit.Assert.assertEquals;
  *    se desactivan y la prueba pasa SIEMPRE, sin comprobar nada. Un fallo
  *    silencioso que ademas depende de como se ejecute.
  */
-@RunWith(SpringRunner.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureTestRestTemplate
 @TestPropertySource(properties = "registry.jdbc-url=jdbc:h2:mem:regdb_ctrl_it;DB_CLOSE_DELAY=-1")
-public class RegistryControllerIT {
+class RegistryControllerIT {
 
     @Autowired
     private TestRestTemplate rest;
@@ -51,7 +50,7 @@ public class RegistryControllerIT {
     }
 
     @Test
-    public void shouldRegisterValidPerson() {
+    void shouldRegisterValidPerson() {
         ResponseEntity<String> resp = registrar(
                 "{\"name\":\"Ana\",\"id\":100,\"age\":30,\"gender\":\"FEMALE\",\"alive\":true}");
 
@@ -60,7 +59,7 @@ public class RegistryControllerIT {
     }
 
     @Test
-    public void shouldRejectUnderage() {
+    void shouldRejectUnderage() {
         // El escenario de carga envia una mezcla de casos validos, menores y
         // no vivos. Si el servicio dejara de distinguirlos, k6 seguiria viendo
         // 200 y la prueba de carga saldria verde con el sistema roto: por eso
@@ -73,7 +72,7 @@ public class RegistryControllerIT {
     }
 
     @Test
-    public void shouldRejectDeadPerson() {
+    void shouldRejectDeadPerson() {
         ResponseEntity<String> resp = registrar(
                 "{\"name\":\"Pedro\",\"id\":102,\"age\":45,\"gender\":\"MALE\",\"alive\":false}");
 
@@ -82,7 +81,7 @@ public class RegistryControllerIT {
     }
 
     @Test
-    public void shouldRejectDuplicatedId() {
+    void shouldRejectDuplicatedId() {
         // Importa para la prueba de carga: el generador de datos de k6 tiene
         // que producir identificadores unicos entre usuarios virtuales, o la
         // mitad de las peticiones devolveria DUPLICATED y la medicion no

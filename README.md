@@ -510,8 +510,9 @@ El servicio ya expone métricas (ver `application.properties`):
 ```properties
 management.endpoints.web.exposure.include=health,metrics,prometheus
 management.metrics.distribution.percentiles-histogram.http.server.requests=true
-management.metrics.distribution.percentiles.http.server.requests=0.5,0.95,0.99
 ```
+
+La segunda línea publica un **histograma** de latencias por endpoint: cuántas peticiones tardaron menos de 1 ms, de 2 ms, de 5 ms… (series `http_server_requests_seconds_bucket` en `/actuator/prometheus`). De ahí se calcula cualquier percentil.
 
 Con el servicio arriba:
 
@@ -529,8 +530,15 @@ curl -s "http://localhost:8080/actuator/metrics/jvm.gc.pause" | jq
 ### El ejercicio: cliente contra servidor
 
 1. Anote el p95 que reporta k6 al final de una corrida `load`.
-2. Consulte el p95 de `http.server.requests` en Actuator.
+2. Obtenga el p95 del **servidor** a partir del histograma:
+   - **Con el [ambiente de Docker](#ambiente-con-docker-servicio-prometheus-grafana-y-k6):** es la línea *p95 servidor (Actuator)* del tablero de Grafana, o esta consulta en Prometheus (<http://localhost:9090>):
+     `histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri="/register"}[1m])))`
+   - **Sin Docker:** lea los buckets directamente:
+     `curl -s http://localhost:8080/actuator/prometheus | grep 'http_server_requests_seconds_bucket.*uri="/register"'`
+     Cada bucket `le="x"` cuenta las peticiones que tardaron **x segundos o menos**, de forma acumulada. El p95 es el primer `le` cuyo conteo alcanza el 95 % del total (el bucket `le="+Inf"`). Es una cota por arriba, no un valor exacto: así funcionan los histogramas.
 3. Compare.
+
+> `/actuator/metrics/http.server.requests` sirve para ver el conteo, el tiempo total y el máximo, pero **no** trae percentiles. Con Spring Boot 4 tampoco se exportan percentiles calculados en el servidor cuando el histograma está activo: el p95 se obtiene siempre del histograma.
 
 La diferencia entre ambos **no es ruido**: es el tiempo que la petición pasó viajando por la red y, sobre todo, **esperando en la cola** antes de que un hilo la atendiera. Si el servidor dice 20 ms y el cliente dice 400 ms, el problema no está en su código de negocio: está en la saturación.
 
